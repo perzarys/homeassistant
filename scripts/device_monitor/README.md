@@ -4,7 +4,8 @@
 
 You’ll need:
 
-- **Home Assistant**
+- **Home Assistant OS**
+- **File editor** (installed or via the official add-on)
 - **AppDaemon** (installed or via the official add-on)
 - **InfluxDB** (already storing your device’s power data)
 
