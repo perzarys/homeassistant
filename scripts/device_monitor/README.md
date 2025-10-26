@@ -37,8 +37,6 @@ You’ll need:
 - **AppDaemon** (installed or via the official add-on)
 - **InfluxDB** (already storing your device’s power data)
 
----
-
 ## 2. Install the Python dependency
 
 The app requires the **InfluxDB Python client**.
