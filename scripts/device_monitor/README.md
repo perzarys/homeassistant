@@ -1,5 +1,33 @@
 # 🧩 Installation Guide — DeviceMonitor AppDaemon App
 
+## 🧠 DeviceMonitor AppDaemon App
+
+Monitor device power usage patterns (e.g., fridge, pump, or heater) using InfluxDB data to detect abnormal behavior — such as cycles that are too long or too short — with automatic alerts via Home Assistant notifications.
+
+The app continuously monitors a power sensor and determines whether the device is:
+
+- Active → Power > threshold_watt
+
+- Inactive → Power ≤ threshold_watt
+
+It uses InfluxDB data to calculate:
+
+- Median active duration
+
+- Median inactive duration
+
+Then it:
+
+1. Sends immediate alerts if the current phase lasts longer than median × (1 + margin)
+
+2. Sets pending alerts if the previous phase ended too early (< median × (1 - margin))
+
+3. Fires those pending alerts once the opposite phase runs for at least minimum_interval_minutes
+
+4. Writes metrics to InfluxDB when a phase ends
+
+5. Logs detailed status info every tick
+
 ## 1. Requirements
 
 You’ll need:
