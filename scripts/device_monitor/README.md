@@ -23,7 +23,7 @@ Under System Packages, add `influxdb`
 
 ## 3. Copy the app file
 
-Create the following folder structure (if it doesn’t already exist):
+Create the following folder structure (if it doesn’t already exist) using *File editor*:
 
 `/addon_configs/a0d7b954_appdaemon/apps/`
 
