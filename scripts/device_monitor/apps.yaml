@@ -1,0 +1,18 @@
+device_monitor:
+  module: device_monitor
+  class: DeviceMonitor
+  influx_measurement_var: YOUR_MEASUREMENT_VAR
+  influx_host: YOUR_HA_IP
+  influx_port: 8086
+  influx_user: YOUR_USER
+  influx_password: YOUR_PASSWORD
+  influx_db: homeassistant
+  entity: YOUR_SENSOR_ID
+  threshold_watt: 20
+  # margin_percent: 25
+  margin_minutes: 10
+  check_interval_seconds: 30
+  notify_service: YOUR_MOBILE_DEVICE_ID # (e.g. notify/mobile_app_pixel_8)
+  notification_min_delay: 20
+  minimum_interval_minutes: 2
+  history_window_hours: 12
