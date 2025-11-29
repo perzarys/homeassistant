@@ -12,7 +12,7 @@ device_monitor:
   influx_user: homeassistant
   influx_password: your_password
   influx_db: homeassistant
-  influx_measurement_var: device_cycles
+  influx_measurement_var: device_cycles # will store median active/inactive etc. in influx for grafana access 
   history_window_hours: 24
   alert_cooldown_minutes: 5  # prevent alert spam
   debug_logging: false       # enable for troubleshooting
