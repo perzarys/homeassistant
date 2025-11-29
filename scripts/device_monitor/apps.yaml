@@ -6,7 +6,7 @@ device_monitor:
   minimum_interval_minutes: 10
   check_interval_seconds: 30
   margin_minutes: 5  # or use margin_percent: 20
-  notify_service: notify.mobile_app
+  notify_service: notify.mobile_app # get from Developer tools > Actions, search for phone 
   influx_host: localhost
   influx_port: 8086
   influx_user: homeassistant
