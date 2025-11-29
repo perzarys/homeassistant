@@ -1,10 +1,10 @@
 device_monitor:
-  module: device_monitor
-  class: DeviceMonitor
-  entity: sensor.fridge_power
-  threshold_watt: 5.0
-  minimum_interval_minutes: 10
-  check_interval_seconds: 30
+  module: device_monitor # leave unchanged
+  class: DeviceMonitor # leave unchanged
+  entity: sensor.fridge_power # get entity id of your sensor from your dashboard
+  threshold_watt: 5.0 # datect electrical activity of the sensor starting at this threshold
+  minimum_interval_minutes: 10 # an interval needs this minimum value in order to be classified as an interval
+  check_interval_seconds: 30 # how often to run the script
   margin_minutes: 5  # or use margin_percent: 20
   notify_service: notify.mobile_app # get from Developer tools > Actions, search for phone 
   influx_host: localhost # default
@@ -13,7 +13,8 @@ device_monitor:
   influx_user: your_name # create in InfluxDB > InfluxDB Admin > Users and assign user to database
   influx_password: your_password # ^ 
   influx_measurement_var: device_cycles # will store median active/inactive etc. in influx for grafana access 
-  history_window_hours: 24
+  history_window_hours: 24 # consider the last x hours of activity from the sensor for median calculation
   alert_cooldown_minutes: 5  # prevent alert spam
   debug_logging: false       # enable for troubleshooting
-  send_test_notification: true
+  send_test_notification: true # on start of script, check if it's connected to the phone
+
