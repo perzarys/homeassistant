@@ -16,3 +16,4 @@ device_monitor:
   history_window_hours: 24
   alert_cooldown_minutes: 5  # prevent alert spam
   debug_logging: false       # enable for troubleshooting
+  send_test_notification: true
