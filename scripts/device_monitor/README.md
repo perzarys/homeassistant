@@ -1,6 +1,6 @@
-# 🧩 Installation Guide — DeviceMonitor AppDaemon App
+# Installation Guide — DeviceMonitor AppDaemon App
 
-## 🧠 DeviceMonitor AppDaemon App
+## DeviceMonitor AppDaemon App
 
 Monitor device power usage patterns (e.g., fridge, pump, or heater) using InfluxDB data to detect abnormal behavior — such as cycles that are too long or too short — with automatic alerts via Home Assistant notifications.
 
@@ -41,7 +41,7 @@ You’ll need:
 
 The app requires the **InfluxDB Python client**.
 
-### 🧩 If using the official AppDaemon Add-on in Home Assistant:
+### If using the official AppDaemon Add-on in Home Assistant:
 
 Open the AppDaemon Add-on settings.
 
@@ -69,7 +69,7 @@ set the variables to fit your needs.
 
 
 
-## 📊 5. Logs & Debugging
+## 5. Logs & Debugging
 
 Check the logs in Settings > Add-ons > AppDaemon > Logs.
 
@@ -94,7 +94,7 @@ You’ll see:
   - Pending and fired alerts
 
 
-## 🧠 6. Example interpretation
+## 6. Example interpretation
 
 If your fridge cycles every ~12 minutes (active) and rests ~35 minutes (inactive):
 
