@@ -12,9 +12,11 @@ The app continuously monitors a power sensor and determines whether the device i
 
 It uses InfluxDB data to calculate:
 
-- Median active duration
+- Mean and median active duration
 
-- Median inactive duration
+- Mean and median inactive duration
+
+You can configure which statistic (mean or median) to use for alert thresholds, while both values are always written to InfluxDB for historical tracking and analysis.
 
 Then it:
 
@@ -61,11 +63,16 @@ Then save your script as:
 
 Edit (or create) your AppDaemon configuration file:
 
-`/addon_configs/a0d7b954_appdaemon/apps/apps.py`
+`/addon_configs/a0d7b954_appdaemon/apps/apps.yaml`
 
-Add the content of the `apps.py` file in there and 
+Add the content of the `apps.yaml` file in there and set the variables to fit your needs.
 
-set the variables to fit your needs.
+### Key Configuration Parameters:
+
+- **statistic_method**: Choose `median` (default) or `mean` for calculating alert thresholds
+  - `median` is more robust against outliers and recommended for most use cases
+  - `mean` provides the arithmetic average and may be preferred for more uniform cycle patterns
+  - Both statistics are always written to InfluxDB regardless of this setting
 
 
 
@@ -76,16 +83,18 @@ Check the logs in Settings > Add-ons > AppDaemon > Logs.
 Typical logs
 
 ```
-INFO device_monitor: fridge_power: active=7.3m, median=11.2, limit=8.4/14.0, OK
+INFO device_monitor: fridge_power: active=7.3m, median=11.2, limits=[8.4, 14.0], OK
 INFO device_monitor: fridge_power: PENDING set: active_short (active too short: 5.8m < 8.4m)
 INFO device_monitor: fridge_power: fired pending idle_short after buffer
 ```
 
-You’ll see:
+Note: The log will show either "median" or "mean" based on your configured `statistic_method`.
+
+You'll see:
 
   - Active/inactive phase info
   
-  - Current median values
+  - Current mean/median values (based on configuration)
   
   - Dynamic min/max thresholds
   

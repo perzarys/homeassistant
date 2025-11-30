@@ -69,6 +69,7 @@ class DeviceMonitor(hass.Hass):
         self.alert_cooldown_minutes = float(args.get("alert_cooldown_minutes", 5))
         self.debug_logging = args.get("debug_logging", False)
         self.send_test_notification = args.get("send_test_notification", False)
+        self.statistic_method = args.get("statistic_method", "median").lower()
         
         # Validation
         if self.threshold_watt <= 0:
@@ -81,6 +82,8 @@ class DeviceMonitor(hass.Hass):
             raise ValueError("margin values must be non-negative")
         if self.margin_percent > 0 and self.margin_minutes > 0:
             self.log("Both margin_percent and margin_minutes set - using margin_minutes", level="WARNING")
+        if self.statistic_method not in ["median", "mean"]:
+            raise ValueError("statistic_method must be either 'median' or 'mean'")
 
     def _init_influx_client(self):
         """Initialize InfluxDB client with error handling."""
@@ -130,6 +133,7 @@ class DeviceMonitor(hass.Hass):
                 f"Threshold: {self.threshold_watt}W\n"
                 f"Min interval: {self.min_interval}m\n"
                 f"Margin: {margin_str}\n"
+                f"Statistic: {self.statistic_method}\n"
                 f"Check interval: {self.check_interval}s"
             )
             
@@ -156,6 +160,7 @@ class DeviceMonitor(hass.Hass):
             f"threshold={self.threshold_watt}W | "
             f"min_interval={self.min_interval}m | "
             f"margin={margin_str} | "
+            f"statistic={self.statistic_method} | "
             f"history={self.history_window_hours}h | "
             f"check_interval={self.check_interval}s | "
             f"alert_cooldown={self.alert_cooldown_minutes}m"
@@ -275,15 +280,26 @@ class DeviceMonitor(hass.Hass):
             if (active_segments[i][0] - active_segments[i - 1][1]).total_seconds() / 60 >= self.min_interval
         ]
 
-    def _compute_medians(self, active_segments: List[Tuple], idle_segments: List[Tuple]) -> Tuple[float, float]:
-        """Compute median active and idle durations."""
-        def median_minutes(segments):
+    def _compute_statistics(self, active_segments: List[Tuple], idle_segments: List[Tuple]) -> Tuple[float, float, float, float]:
+        """Compute mean and median active and idle durations."""
+        def calculate_durations(segments):
             if not segments:
-                return 0.0
+                return 0.0, 0.0
             durations = [(b - a).total_seconds() / 60 for a, b in segments]
-            return statistics.median(durations) if len(durations) > 0 else 0.0
-            
-        return median_minutes(active_segments), median_minutes(idle_segments)
+            if len(durations) == 0:
+                return 0.0, 0.0
+            mean_val = statistics.mean(durations)
+            median_val = statistics.median(durations)
+            return mean_val, median_val
+        
+        mean_active, median_active = calculate_durations(active_segments)
+        mean_idle, median_idle = calculate_durations(idle_segments)
+        
+        return mean_active, median_active, mean_idle, median_idle
+    
+    def _get_selected_statistic(self, mean_val: float, median_val: float) -> float:
+        """Return the configured statistic (mean or median)."""
+        return mean_val if self.statistic_method == "mean" else median_val
 
     def _get_margin_limits(self) -> Tuple[Callable, Callable]:
         """Return lower and upper bound functions based on configured margin."""
@@ -355,7 +371,8 @@ class DeviceMonitor(hass.Hass):
                 self.pend_active_since = ""
 
     def _on_phase_flip(self, flipped: bool, now: datetime, phase: str,
-                      med_active: float, med_idle: float, lo: Callable, up: Callable,
+                      mean_active: float, median_active: float, mean_idle: float, median_idle: float,
+                      stat_active: float, stat_idle: float, lo: Callable, up: Callable,
                       recent_active: float, recent_idle: float):
         """Handle actions at phase flip: resolve alerts, set pending states, write DB entry."""
         if not flipped:
@@ -374,21 +391,24 @@ class DeviceMonitor(hass.Hass):
                 self.alert_kind = AlertKind.NONE
 
         # Set pending short alerts
-        if self.prev_phase == "active" and med_active > 0:
-            if self.min_interval <= recent_active < lo(med_active):
-                self.pend_active_reason = f"active too short: {recent_active:.1f}m < {lo(med_active):.1f}m"
+        if self.prev_phase == "active" and stat_active > 0:
+            if self.min_interval <= recent_active < lo(stat_active):
+                self.pend_active_reason = f"active too short: {recent_active:.1f}m < {lo(stat_active):.1f}m"
                 self.pend_active_since = now.isoformat()
                 
-        elif self.prev_phase == "inactive" and med_idle > 0:
-            if self.min_interval <= recent_idle < lo(med_idle):
-                self.pend_idle_reason = f"idle too short: {recent_idle:.1f}m < {lo(med_idle):.1f}m"
+        elif self.prev_phase == "inactive" and stat_idle > 0:
+            if self.min_interval <= recent_idle < lo(stat_idle):
+                self.pend_idle_reason = f"idle too short: {recent_idle:.1f}m < {lo(stat_idle):.1f}m"
                 self.pend_idle_since = now.isoformat()
 
-        # Write phase completion to InfluxDB
+        # Write phase completion to InfluxDB with both mean and median
         fields = {
             "phase": self.prev_phase,
-            "median_active_minutes": med_active,
-            "median_inactive_minutes": med_idle,
+            "mean_active_minutes": mean_active,
+            "median_active_minutes": median_active,
+            "mean_inactive_minutes": mean_idle,
+            "median_inactive_minutes": median_idle,
+            "statistic_method": self.statistic_method,
             "alert_state": self.alert_state.value,
             "alert_kind": self.alert_kind.value,
             "alert_ts": self.alert_timestamp,
@@ -442,7 +462,12 @@ class DeviceMonitor(hass.Hass):
 
         # Compute statistics
         idle_segments = self._extract_idle_segments(active_segments)
-        med_active, med_idle = self._compute_medians(active_segments, idle_segments)
+        mean_active, median_active, mean_idle, median_idle = self._compute_statistics(active_segments, idle_segments)
+        
+        # Select the configured statistic for alert calculations
+        stat_active = self._get_selected_statistic(mean_active, median_active)
+        stat_idle = self._get_selected_statistic(mean_idle, median_idle)
+        
         lo, up = self._get_margin_limits()
         phase, curr_active, curr_idle, now = self._current_phase_info(is_active, active_start, active_segments)
         
@@ -451,7 +476,7 @@ class DeviceMonitor(hass.Hass):
 
         # Check for immediate alerts
         in_alert, reason, kind = self._check_immediate_alert(
-            phase, curr_active, curr_idle, med_active, med_idle, lo, up
+            phase, curr_active, curr_idle, stat_active, stat_idle, lo, up
         )
         
         # Update alert state and notify
@@ -469,30 +494,32 @@ class DeviceMonitor(hass.Hass):
         self._handle_pending_alerts(phase, curr_active, curr_idle)
         
         # Handle phase flip
-        self._on_phase_flip(flipped, now, phase, med_active, med_idle, lo, up, recent_active, recent_idle)
+        self._on_phase_flip(flipped, now, phase, mean_active, median_active, mean_idle, median_idle, 
+                          stat_active, stat_idle, lo, up, recent_active, recent_idle)
 
         # Logging
-        self._log_status(phase, curr_active, curr_idle, med_active, med_idle, lo, up, in_alert, reason)
+        self._log_status(phase, curr_active, curr_idle, stat_active, stat_idle, lo, up, in_alert, reason)
 
         # Update state
         self.prev_phase = phase
         self.prev_kind = kind if in_alert else AlertKind.NONE
 
     def _log_status(self, phase: str, curr_active: float, curr_idle: float,
-                   med_active: float, med_idle: float, lo: Callable, up: Callable,
+                   stat_active: float, stat_idle: float, lo: Callable, up: Callable,
                    in_alert: bool, reason: str):
         """Log current monitoring status."""
+        stat_label = self.statistic_method
         if phase == "active":
             status = f"ALERT: {reason}" if in_alert else "OK"
             self.log(
-                f"{self.entity}: active={curr_active:.1f}m, median={med_active:.1f}m, "
-                f"limits=[{lo(med_active):.1f}, {up(med_active):.1f}], {status}"
+                f"{self.entity}: active={curr_active:.1f}m, {stat_label}={stat_active:.1f}m, "
+                f"limits=[{lo(stat_active):.1f}, {up(stat_active):.1f}], {status}"
             )
         else:
             status = f"ALERT: {reason}" if in_alert else "OK"
             self.log(
-                f"{self.entity}: inactive={curr_idle:.1f}m, median={med_idle:.1f}m, "
-                f"limits=[{lo(med_idle):.1f}, {up(med_idle):.1f}], {status}"
+                f"{self.entity}: inactive={curr_idle:.1f}m, {stat_label}={stat_idle:.1f}m, "
+                f"limits=[{lo(stat_idle):.1f}, {up(stat_idle):.1f}], {status}"
             )
 
     def terminate(self):
