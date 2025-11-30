@@ -31,7 +31,7 @@ def tparse(ts: str) -> Optional[datetime]:
             ts = ts[:-1] + "+00:00"
         dt = datetime.fromisoformat(ts)
         return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-    except (ValueError, AttributeError) as e:
+    except (ValueError, AttributeError):
         return None
 
 
@@ -112,7 +112,7 @@ class DeviceMonitor(hass.Hass):
         self.pend_idle_since = ""
         
         # Previous phase tracking
-        self.prev_phase = None  # Changed from "" to None for clarity
+        self.prev_phase = None
         self.prev_kind = AlertKind.NONE
         
         # Alert state
@@ -136,7 +136,6 @@ class DeviceMonitor(hass.Hass):
                 f"Statistic: {self.statistic_method}\n"
                 f"Check interval: {self.check_interval}s"
             )
-            
             try:
                 if self.notify_service:
                     self.call_service(
@@ -153,7 +152,6 @@ class DeviceMonitor(hass.Hass):
     def _start_monitoring(self):
         """Start the periodic monitoring task."""
         self.run_every(self.tick, self.datetime(), self.check_interval)
-        
         margin_str = f"{self.margin_minutes}m" if self.margin_minutes else f"{self.margin_percent}%"
         self.log(
             f"DeviceMonitor initialized for {self.entity} | "
@@ -178,12 +176,9 @@ class DeviceMonitor(hass.Hass):
                 f"ORDER BY time ASC"
             )
             points = list(self.client.query(query).get_points())
-            
             if self.debug_logging:
                 self.log(f"Fetched {len(points)} data points from InfluxDB")
-            
             return points
-            
         except Exception as e:
             self.log(f"InfluxDB query failed: {e}", level="ERROR")
             return []
@@ -197,10 +192,8 @@ class DeviceMonitor(hass.Hass):
                 "time": now.isoformat(),
                 "fields": fields
             }])
-            
             if self.debug_logging:
                 self.log(f"Wrote to InfluxDB: {fields}")
-                
         except Exception as e:
             self.log(f"Influx write error: {e}", level="ERROR")
 
@@ -208,7 +201,7 @@ class DeviceMonitor(hass.Hass):
         """Send a Home Assistant notification with cooldown to prevent spam."""
         if not self.notify_service:
             return
-            
+        
         # Check cooldown
         now = datetime.now()
         if self.last_alert_time:
@@ -225,7 +218,6 @@ class DeviceMonitor(hass.Hass):
             )
             self.last_alert_time = now
             self.log(f"Alert sent: {message}")
-            
         except Exception as e:
             self.log(f"Notify error: {e}", level="ERROR")
 
@@ -235,7 +227,7 @@ class DeviceMonitor(hass.Hass):
         """Return active intervals and timing info by thresholding power samples."""
         if not samples:
             return [], False, None, 0.0, 0.0
-            
+        
         active_segments = []
         active_start = None
         last_state = float(samples[0]["value"]) > self.threshold_watt
@@ -247,7 +239,6 @@ class DeviceMonitor(hass.Hass):
             timestamp = tparse(sample["time"])
             if not timestamp:
                 continue
-                
             timestamp = timestamp.astimezone()
             is_active = float(sample["value"]) > self.threshold_watt
             
@@ -264,7 +255,6 @@ class DeviceMonitor(hass.Hass):
                             active_segments.append((active_start, timestamp))
                     active_start = None
                     last_active_end = timestamp
-                    
                 last_state = is_active
 
         return active_segments, last_state, active_start, recent_active_duration, recent_idle_duration
@@ -273,7 +263,6 @@ class DeviceMonitor(hass.Hass):
         """Compute idle intervals between active phases that exceed minimum duration."""
         if len(active_segments) < 2:
             return []
-            
         return [
             (active_segments[i - 1][1], active_segments[i][0])
             for i in range(1, len(active_segments))
@@ -294,9 +283,8 @@ class DeviceMonitor(hass.Hass):
         
         mean_active, median_active = calculate_durations(active_segments)
         mean_idle, median_idle = calculate_durations(idle_segments)
-        
         return mean_active, median_active, mean_idle, median_idle
-    
+
     def _get_selected_statistic(self, mean_val: float, median_val: float) -> float:
         """Return the configured statistic (mean or median)."""
         return mean_val if self.statistic_method == "mean" else median_val
@@ -313,7 +301,7 @@ class DeviceMonitor(hass.Hass):
             lambda x: x * (1 + self.margin_percent / 100)
         )
 
-    def _current_phase_info(self, is_active: bool, active_start: Optional[datetime], 
+    def _current_phase_info(self, is_active: bool, active_start: Optional[datetime],
                            active_segments: List[Tuple]) -> Tuple[str, float, float, datetime]:
         """Determine current phase (active/inactive), elapsed duration, and timestamp."""
         now = datetime.now().astimezone()
@@ -322,10 +310,10 @@ class DeviceMonitor(hass.Hass):
             anchor = active_start if active_start else (active_segments[-1][1] if active_segments else now)
             elapsed = (now - anchor).total_seconds() / 60
             return "active", elapsed, 0.0, now
-            
+        
         if not active_segments:
             return "inactive", 0.0, 0.0, now
-            
+        
         last_end = active_segments[-1][1]
         elapsed = (now - last_end).total_seconds() / 60
         return "inactive", 0.0, elapsed, now
@@ -333,42 +321,45 @@ class DeviceMonitor(hass.Hass):
     # ---------------- Alert and state management ----------------
     
     def _check_immediate_alert(self, phase: str, curr_active: float, curr_idle: float,
-                              med_active: float, med_idle: float, 
+                              stat_active: float, stat_idle: float,
                               lo: Callable, up: Callable) -> Tuple[bool, str, AlertKind]:
         """Check for immediate long-interval alerts."""
-        if phase == "active" and med_active > 0 and curr_active >= self.min_interval:
-            if curr_active > up(med_active):
+        if phase == "active" and stat_active > 0 and curr_active >= self.min_interval:
+            if curr_active > up(stat_active):
                 return (
                     True,
-                    f"active too long: {curr_active:.1f}m > {up(med_active):.1f}m",
+                    f"active too long: {curr_active:.1f}m > {up(stat_active):.1f}m",
                     AlertKind.ACTIVE_LONG
                 )
-                
-        if phase == "inactive" and med_idle > 0 and curr_idle >= self.min_interval:
-            if curr_idle > up(med_idle):
+        
+        if phase == "inactive" and stat_idle > 0 and curr_idle >= self.min_interval:
+            if curr_idle > up(stat_idle):
                 return (
                     True,
-                    f"idle too long: {curr_idle:.1f}m > {up(med_idle):.1f}m",
+                    f"idle too long: {curr_idle:.1f}m > {up(stat_idle):.1f}m",
                     AlertKind.IDLE_LONG
                 )
-                
+        
         return False, "", AlertKind.NONE
 
     def _handle_pending_alerts(self, phase: str, curr_active: float, curr_idle: float):
         """Fire delayed 'too short' alerts when phase persists beyond min_interval."""
         if phase == "active" and self.pend_idle_reason:
             if curr_active >= self.min_interval:
-                self._notify(self.pend_idle_reason)
-                self.log(f"Fired pending idle_short alert after buffer period")
+                # Clear BEFORE notifying to prevent any re-entry issues
+                reason = self.pend_idle_reason
                 self.pend_idle_reason = ""
                 self.pend_idle_since = ""
-                
+                self._notify(reason)
+                self.log(f"Fired pending idle_short alert after buffer period")
         elif phase == "inactive" and self.pend_active_reason:
             if curr_idle >= self.min_interval:
-                self._notify(self.pend_active_reason)
-                self.log(f"Fired pending active_short alert after buffer period")
+                # Clear BEFORE notifying to prevent any re-entry issues
+                reason = self.pend_active_reason
                 self.pend_active_reason = ""
                 self.pend_active_since = ""
+                self._notify(reason)
+                self.log(f"Fired pending active_short alert after buffer period")
 
     def _on_phase_flip(self, flipped: bool, now: datetime, phase: str,
                       mean_active: float, median_active: float, mean_idle: float, median_idle: float,
@@ -378,24 +369,32 @@ class DeviceMonitor(hass.Hass):
         if not flipped:
             return
 
+        # Clear opposite-phase pending alerts to prevent stale alerts
+        if phase == "active":
+            # We just became active, clear any pending active alerts
+            self.pend_active_reason = ""
+            self.pend_active_since = ""
+        else:
+            # We just became inactive, clear any pending idle alerts
+            self.pend_idle_reason = ""
+            self.pend_idle_since = ""
+
         # Clear alert state when phase ends
         if self.alert_state == AlertState.ALERT:
             if self.prev_kind == AlertKind.ACTIVE_LONG and self.prev_phase == "active":
                 self._notify(f"active long interval ended (duration {recent_active:.1f}m)")
                 self.alert_state = AlertState.OK
                 self.alert_kind = AlertKind.NONE
-                
             elif self.prev_kind == AlertKind.IDLE_LONG and self.prev_phase == "inactive":
                 self._notify(f"idle long interval ended (duration {recent_idle:.1f}m)")
                 self.alert_state = AlertState.OK
                 self.alert_kind = AlertKind.NONE
 
-        # Set pending short alerts
+        # Set pending short alerts for the phase that just ended
         if self.prev_phase == "active" and stat_active > 0:
             if self.min_interval <= recent_active < lo(stat_active):
                 self.pend_active_reason = f"active too short: {recent_active:.1f}m < {lo(stat_active):.1f}m"
                 self.pend_active_since = now.isoformat()
-                
         elif self.prev_phase == "inactive" and stat_idle > 0:
             if self.min_interval <= recent_idle < lo(stat_idle):
                 self.pend_idle_reason = f"idle too short: {recent_idle:.1f}m < {lo(stat_idle):.1f}m"
@@ -422,20 +421,19 @@ class DeviceMonitor(hass.Hass):
             fields["last_active_minutes"] = recent_active
         elif self.prev_phase == "inactive":
             fields["last_inactive_minutes"] = recent_idle
-            
+        
         self._write_influx(now, fields)
 
     # ---------------- Main tick loop ----------------
     
     def tick(self, _):
-        """Main periodic function: analyze activity, compute medians, trigger alerts, log state."""
+        """Main periodic function: analyze activity, compute statistics, trigger alerts, log state."""
         # Prevent overlapping executions
         if self.processing:
             self.log("Previous tick still processing, skipping", level="WARNING")
             return
-            
-        self.processing = True
         
+        self.processing = True
         try:
             self._process_tick()
         except Exception as e:
@@ -454,7 +452,6 @@ class DeviceMonitor(hass.Hass):
 
         # Extract activity segments
         active_segments, is_active, active_start, recent_active, recent_idle = self._extract_activity_segments(samples)
-        
         if not active_segments:
             if self.debug_logging:
                 self.log("No valid active segments found in history")
@@ -467,11 +464,10 @@ class DeviceMonitor(hass.Hass):
         # Select the configured statistic for alert calculations
         stat_active = self._get_selected_statistic(mean_active, median_active)
         stat_idle = self._get_selected_statistic(mean_idle, median_idle)
-        
         lo, up = self._get_margin_limits()
         phase, curr_active, curr_idle, now = self._current_phase_info(is_active, active_start, active_segments)
         
-        # Detect phase flip
+        # Detect phase flip (skip on first run when prev_phase is None)
         flipped = self.prev_phase is not None and self.prev_phase != phase
 
         # Check for immediate alerts
@@ -494,7 +490,7 @@ class DeviceMonitor(hass.Hass):
         self._handle_pending_alerts(phase, curr_active, curr_idle)
         
         # Handle phase flip
-        self._on_phase_flip(flipped, now, phase, mean_active, median_active, mean_idle, median_idle, 
+        self._on_phase_flip(flipped, now, phase, mean_active, median_active, mean_idle, median_idle,
                           stat_active, stat_idle, lo, up, recent_active, recent_idle)
 
         # Logging
@@ -509,6 +505,7 @@ class DeviceMonitor(hass.Hass):
                    in_alert: bool, reason: str):
         """Log current monitoring status."""
         stat_label = self.statistic_method
+        
         if phase == "active":
             status = f"ALERT: {reason}" if in_alert else "OK"
             self.log(
