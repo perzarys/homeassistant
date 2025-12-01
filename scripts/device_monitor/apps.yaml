@@ -1,20 +1,36 @@
 device_monitor:
-  module: device_monitor # leave unchanged
-  class: DeviceMonitor # leave unchanged
-  entity: sensor.fridge_power # get entity id of your sensor from your dashboard
-  threshold_watt: 5.0 # datect electrical activity of the sensor starting at this threshold
-  minimum_interval_minutes: 2 # an interval needs this minimum value in order to be classified as an interval
-  check_interval_seconds: 30 # how often to run the script
-  margin_minutes: 5  # or use margin_percent: 20
-  statistic_method: median # choose 'median' (default) or 'mean' for interval calculations
-  notify_service: notify.mobile_app # get from Developer tools > Actions, search for phone 
-  influx_host: localhost # default
-  influx_port: 8086 # default
-  influx_db: homeassistant # create this database in InfluxDB > InfluxDB Admin > Databases
-  influx_user: your_name # create in InfluxDB > InfluxDB Admin > Users and assign user to database
-  influx_password: your_password # ^ 
-  influx_measurement_var: device_cycles # will store median active/inactive etc. in influx for grafana access 
-  history_window_hours: 24 # consider the last x hours of activity from the sensor for median calculation
-  alert_cooldown_minutes: 5  # prevent alert spam
-  debug_logging: false       # enable for troubleshooting
-  send_test_notification: true # on start of script, check if it's connected to the phone
+  module: device_monitor
+  class: DeviceMonitor
+  
+  # REQUIRED: Entity & Thresholds
+  entity: sensor.fridge_power              # Power sensor entity ID
+  threshold_watt: 5.0                      # Activity threshold in watts
+  minimum_interval_minutes: 2              # Minimum duration to count as a cycle
+  
+  # REQUIRED: Timing
+  check_interval_seconds: 30               # How often to check (30-60 recommended)
+  
+  # REQUIRED: InfluxDB Connection
+  influx_host: localhost
+  influx_port: 8086
+  influx_db: homeassistant
+  influx_user: homeassistant
+  influx_password: your_secure_password
+  
+  # REQUIRED: Notifications
+  notify_service: notify.mobile_app_iphone # Get from Developer tools > Actions
+  
+  # OPTIONAL: Alert Thresholds (choose ONE)
+  margin_percent: 20                       # Deviation threshold as % (e.g., 20%)
+  # OR
+  # margin_minutes: 5                      # Deviation threshold in minutes
+  
+  # OPTIONAL: Analysis
+  statistic_method: mean                   # 'median' or 'mean'
+  history_window_hours: 24                 # Data lookback period
+  
+  # OPTIONAL: Behavior
+  alert_cooldown_minutes: 5                # Prevent alert spam
+  influx_measurement_var: device_cycles    # InfluxDB measurement name for cycle data
+  send_test_notification: true             # Test notification on startup
+  debug_logging: false                     # Verbose logging
